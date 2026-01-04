@@ -1,0 +1,137 @@
+// This is your Prisma schema file,
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Currency {
+  id        String    @id @default(uuid())
+  code      String    @unique // USD, EUR, COP
+  symbol    String    // $, €
+  name      String
+  accounts  Account[]
+}
+
+model Account { // Fuente (Efectivo, Banco, TC)
+  id          String   @id @default(uuid())
+  name        String
+  type        AccountType
+  balance     Decimal  @default(0) @db.Decimal(15, 2)
+  
+  currencyId  String
+  currency    Currency @relation(fields: [currencyId], references: [id])
+
+  transactionsFrom Transaction[] @relation("SourceAccount")
+  transactionsTo   Transaction[] @relation("DestinationAccount") // For transfers
+  recurringTransactions RecurringTransaction[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Category { // Entretenimiento, Comida, Sueldo
+  id            String   @id @default(uuid())
+  name          String
+  icon          String?  // Emoji or Icon name
+  type          TransactionType // INCOME, EXPENSE (To filter in UI)
+
+  parentId      String?
+  parent        Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
+  children      Category[] @relation("CategoryToCategory")
+  
+  transactions  Transaction[]
+  recurringTransactions RecurringTransaction[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Decimal  @db.Decimal(15, 2)
+  description String
+  date        DateTime
+  status      TransactionStatus @default(COMPLETED) // PENDING for generated recurring
+  type        TransactionType
+
+  // Relations
+  accountId   String   // Source Account
+  account     Account  @relation("SourceAccount", fields: [accountId], references: [id])
+
+  // Optional: Only if type is TRANSFER
+  toAccountId String? 
+  toAccount   Account? @relation("DestinationAccount", fields: [toAccountId], references: [id])
+
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  
+  // Recurrence Relation
+  recurringTransactionId String?
+  recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RecurringTransaction { // "Regla" para generar transacciones
+  id                String   @id @default(uuid())
+  description       String
+  amount            Decimal  @db.Decimal(15, 2)
+  type              TransactionType
+  frequency         RecurrenceFrequency
+  
+  startDate         DateTime
+  nextDate          DateTime // The date when the NEXT transaction should be generated
+  lastGenerated     DateTime? // To prevent duplicates
+
+  // For "Plazos" (Installments)
+  totalInstallments Int?     // If null, it's indefinite (Netflix). If set, it's a loan/credit (12 months).
+  installmentsPaid  Int      @default(0)
+
+  // Relations
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id])
+  
+  categoryId        String?
+  category          Category? @relation(fields: [categoryId], references: [id])
+  
+  generatedTransactions Transaction[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+enum AccountType {
+  CASH
+  BANK
+  CREDIT_CARD
+  INVESTMENT
+  OTHER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  YEARLY
+}
