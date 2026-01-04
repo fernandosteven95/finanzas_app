@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    container_name: finanzas-app
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@db:5432/finanzas?schema=public
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    networks:
+      - finanzas-network
+
+  db:
+    container_name: finanzas-db
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: finanzas
+    volumes:
+      - finanzas_data:/var/lib/postgresql/data
+    restart: always
+    networks:
+      - finanzas-network
+
+volumes:
+  finanzas_data:
+
+
+networks:
+  finanzas-network:
+    driver: bridge
